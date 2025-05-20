@@ -8,57 +8,40 @@ import numpy as np
 torch.manual_seed(42)
 np.random.seed(42)
 
-# 定义一个简单直接的模型专门用于逆序
-class SimpleReverseModel(nn.Module):
-    def __init__(self, input_size=10, hidden_size=128, output_size=10):
-        super(SimpleReverseModel, self).__init__()
+# 定义基于RNN的逆序模型
+class RNNReverseModel(nn.Module):
+    def __init__(self, input_size=10, hidden_size=128, num_layers=2, output_size=10):
+        super(RNNReverseModel, self).__init__()
         self.hidden_size = hidden_size
+        self.num_layers = num_layers
         
-        # 输入层到隐藏层
-        self.input_to_hidden = nn.Linear(input_size, hidden_size)
-        self.relu1 = nn.ReLU()
+        # RNN层
+        self.rnn = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
         
-        # 隐藏层
-        self.hidden_to_hidden = nn.Linear(hidden_size, hidden_size)
-        self.relu2 = nn.ReLU()
+        # 输出层
+        self.fc = nn.Linear(hidden_size, output_size)
         
-        # 隐藏层到输出层
-        self.hidden_to_output = nn.Linear(hidden_size, output_size)
+    def forward(self, x):
+        # 输入x的形状为 (seq_len, batch_size=1, input_size=10)
+        # 转换为RNN期望的形状 (batch_size=1, seq_len, input_size=10)
+        x = x.permute(1, 0, 2)
         
-    def forward(self, x_sequence):
-        # 获取序列长度
-        seq_length = x_sequence.size(0)
+        # 初始化隐藏状态
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
         
-        # 初始化输出序列
-        outputs = []
+        # RNN前向传播
+        out, _ = self.rnn(x, h0)
         
-        # 为每个输出位置获取特征
-        for i in range(seq_length):
-            # 对输入序列进行编码
-            encoded = []
-            for j in range(seq_length):
-                x = x_sequence[j]
-                h = self.input_to_hidden(x)
-                h = self.relu1(h)
-                encoded.append(h)
-            
-            # 整合所有编码特征
-            context = torch.cat(encoded, dim=1)
-            context = context.view(1, -1)  # 展平
-            
-            # 处理当前反向位置
-            reverse_idx = seq_length - 1 - i
-            current_feature = encoded[reverse_idx]
-            
-            # 生成输出
-            h = self.hidden_to_hidden(current_feature)
-            h = self.relu2(h)
-            output = self.hidden_to_output(h)
-            outputs.append(output)
+        # 应用全连接层到每个时间步
+        out = self.fc(out)
         
-        # 将输出堆叠成序列
-        outputs = torch.stack(outputs, dim=0)
-        return outputs
+        # 逆序输出序列
+        out = torch.flip(out, [1])
+        
+        # 转换回原始形状 (seq_len, batch_size=1, output_size=10)
+        out = out.permute(1, 0, 2)
+        
+        return out
 
 # 数据预处理函数
 def preprocess_data(student_id):
@@ -131,7 +114,7 @@ def predict(model, student_id):
 
 def test_model():
     print("=" * 50)
-    print("数字序列逆序预测模型测试程序")
+    print("基于RNN的数字序列逆序预测模型测试程序")
     print("=" * 50)
     
     while True:
@@ -154,7 +137,7 @@ def test_model():
                 continue
             
             # 创建模型
-            model = SimpleReverseModel()
+            model = RNNReverseModel()
             
             # 准备训练数据
             input_tensor, target_tensor = preprocess_data(student_id)
